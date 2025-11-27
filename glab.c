@@ -1,5 +1,4 @@
-#include "external/glad/glad.h"
-#include "maxwell-solver.h"
+#include "glab.h"
 
 #include <assert.h>
 #include <GLFW/glfw3.h>
@@ -7,6 +6,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+glab_context ctx;
 
 typedef struct {
         void* buffer;
@@ -19,125 +20,42 @@ void free_file(file);
 #define VS_PATH "shaders/vs_basic.glsl"
 #define FS_PATH "shaders/fs_basic.glsl"
 
-int         frame_width = 0, frame_height = 0;
-GLFWwindow* window_ptr = NULL;
-float       aspect     = 0;
-
-GLuint triangle_vao = 0;
-
-GLuint             basic_shader_prog   = 0;
-GLuint             u_transform         = 0;
-GLuint             u_window_dimensions = 0;
-// clang-format off
-const float triangle_vertices[] = {
-          // back face
-              -0.5f, -0.5f, -0.5f, 1.0f, 0.0f, 0.0f,
-              -0.5f, 0.5f, -0.5f, 0.0f, 1.0f, 0.0f,
-              -0.5f,  0.5f, 0.5f, 0.0f, 0.0f, 1.0f,
-              -0.5f, -0.5f, 0.5f, 1.0f, 1.0f, 0.0f,
-          // front face
-               0.5f, -0.5f, -0.5f, 0.5f, 0.5f, 0.0f,
-               0.5f, 0.5f, -0.5f, 0.0f, 1.0f, 1.0f,
-               0.5f,  0.5f, 0.5f, 0.0f, 1.0f, 0.5f,
-               0.5f, -0.5f, 0.5f, 0.5f, 0.5f, 1.0f,
-};
-// clang-format on
-const unsigned int cube_indices[]      = { 0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4,
-                                           0, 1, 5, 5, 4, 0, 3, 2, 6, 6, 7, 3,
-                                           0, 3, 7, 7, 4, 0, 1, 2, 6, 6, 5, 1 };
-
-typedef enum { VERTEX, FRAGMENT } shader_type;
-
-uint32_t compile_shader_from_path(const char* path, shader_type type);
-
-void framebuffer_size_callback(GLFWwindow* window, int w, int h) {
-        int x_border = (w - frame_width) / 2;
-        int y_border = (h - frame_height) / 2;
-
-        if (x_border < 0) {
-                x_border = 0;
+void resize_callback(GLFWwindow* window, int w, int h) {
+        ctx.frame_width  = w;
+        ctx.frame_height = h;
+        if (ctx.on_resize) {
+                ctx.on_resize();
         }
-        if (y_border < 0) {
-                y_border = 0;
-        }
-
-        glViewport(x_border, y_border, frame_width, frame_height);
 }
 
-void init_resources();
-
-void start_renderer(int width, int height) {
-        frame_width  = width;
-        frame_height = height;
+void glab_init_window(u64 width, u64 height, const char* title) {
         glfwInit();
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
         glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+        glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 
-        window_ptr = glfwCreateWindow(width, height, "floating", NULL, NULL);
-
-        if (window_ptr == NULL) {
+        ctx.window = glfwCreateWindow(1, 1, "glab", NULL, NULL);
+        if (ctx.window == NULL) {
                 glfwTerminate();
-                fprintf(stderr, "Failed to create GLFW window");
+                return;
         }
-        glfwMakeContextCurrent(window_ptr);
-
+        glfwMakeContextCurrent(ctx.window);
+        glfwSetFramebufferSizeCallback(ctx.window, resize_callback);
         if (!gladLoadGLLoader((GLADloadproc) glfwGetProcAddress)) {
                 fprintf(stderr, "Failed to initialize GLAD");
         }
-        glViewport(0, 0, frame_width, frame_height);
-        glfwSetFramebufferSizeCallback(window_ptr, framebuffer_size_callback);
-
-        init_resources();
-        u_transform = glGetUniformLocation(basic_shader_prog, "transform");
-        u_window_dimensions =
-                glGetUniformLocation(basic_shader_prog, "window_dimensions");
-        glUniform2f(u_window_dimensions, frame_width, frame_height);
-        aspect = (float) frame_width / (float) frame_height;
-
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
         glEnable(GL_DEPTH_TEST);
 }
 
 void draw() {
-        if (glfwGetKey(window_ptr, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
-                glfwSetWindowShouldClose(window_ptr, 1);
-        };
-
-        static float transform[16];
-        float        time  = (float) glfwGetTime();
-        float        angle = time;  // radians, rotates at 1 rad/s
-        float        c     = cosf(angle);
-        float        s     = sinf(angle);
-
-        // Row-major rotation around Y axis
-        transform[0]  = c;
-        transform[1]  = 0;
-        transform[2]  = s;
-        transform[3]  = 0;
-        transform[4]  = 0;
-        transform[5]  = 1;
-        transform[6]  = 0;
-        transform[7]  = 0;
-        transform[8]  = -s;
-        transform[9]  = 0;
-        transform[10] = c;
-        transform[11] = 0;
-        transform[12] = 0;
-        transform[13] = 0;
-        transform[14] = 0;
-        transform[15] = 1;
-
-        glUniformMatrix4fv(u_transform, 1, GL_FALSE, transform);
-        glBindVertexArray(triangle_vao);
-        glUseProgram(basic_shader_prog);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
-        glfwSwapBuffers(window_ptr);
+        glfwSwapBuffers(ctx.window);
 }
 
-void quit_renderer() {
-        glfwDestroyWindow(window_ptr);
+void glab_quit() {
+        glfwDestroyWindow(ctx.window);
         glfwTerminate();
 }
 
