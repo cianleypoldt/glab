@@ -3,19 +3,31 @@
 #include "external/glad/glad.h"
 
 #include <GLFW/glfw3.h>
+#include <stdint.h>
 
 typedef enum { VERTEX, FRAGMENT } shader_type;
+
+typedef enum { OPAQUE, TRANSPARENT } mesh_type;
 
 typedef struct {
         float X, Y, Z;
 } fv3;
 
 typedef struct {
-} scene;
+        uint64_t index;
 
-void glab_init_window(int width, int height);
+        float transform[16];
+} Mesh;
+
+void glab_create_window(int width, int height);
 void glab_quit();
-void draw();
+
+float* add_opaque_mesh(float*    mesh,
+                       long      vertex_count,
+                       uint32_t* indicies,
+                       long      index_count,
+                       float     color[3]);
+void   draw();
 
 int should_close();
 
