@@ -1,19 +1,25 @@
 #ifndef GLAB_IMPLEMENTATION
 #define GLAB_IMPLEMENTATION
 #include "external/glad/glad.h"
-#include "libmath/linalg.h"
 
 #include <GLFW/glfw3.h>
 
 typedef enum { VERTEX, FRAGMENT } shader_type;
 
 typedef struct {
+        float X, Y, Z;
+} fv3;
+
+typedef struct {
         GLFWwindow* window;
-        f32         frame_width, frame_height;
+        int         frame_width, frame_height;
         void (*on_resize)();
 } glab_context;
 
-void glab_init();
+typedef struct {
+} scene;
+
+void glab_init_window(int width, int height);
 void glab_quit();
 void draw();
 

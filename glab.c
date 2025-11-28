@@ -1,5 +1,8 @@
 #include "glab.h"
 
+#define LIBMATH_SINGLE_PRECISION
+#include "libmath/linalg.h"
+
 #include <assert.h>
 #include <GLFW/glfw3.h>
 #include <math.h>
@@ -28,7 +31,7 @@ void resize_callback(GLFWwindow* window, int w, int h) {
         }
 }
 
-void glab_init_window(u64 width, u64 height, const char* title) {
+void glab_init_window(int width, int height) {
         glfwInit();
         glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
         glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
@@ -46,17 +49,16 @@ void glab_init_window(u64 width, u64 height, const char* title) {
                 fprintf(stderr, "Failed to initialize GLAD");
         }
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
-        glEnable(GL_DEPTH_TEST);
-}
-
-void draw() {
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        glfwSwapBuffers(ctx.window);
 }
 
 void glab_quit() {
         glfwDestroyWindow(ctx.window);
         glfwTerminate();
+}
+
+void draw() {
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glfwSwapBuffers(ctx.window);
 }
 
 void init_resources() {
