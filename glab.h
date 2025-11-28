@@ -11,16 +11,21 @@ typedef struct {
 } fv3;
 
 typedef struct {
-        GLFWwindow* window;
-        int         frame_width, frame_height;
-        void (*on_resize)();
-} glab_context;
-
-typedef struct {
 } scene;
 
 void glab_init_window(int width, int height);
 void glab_quit();
 void draw();
+
+int should_close();
+
+typedef struct {
+        void* buffer;
+        long  size;
+} file;
+
+uint32_t compile_shader_from_path(const char* path, shader_type type);
+file     load_file(const char* path);
+void     free_file(file);
 
 #endif
