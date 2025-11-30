@@ -1,9 +1,10 @@
 #include "glab.h"
+#define LIBMATH_SINGLE_PRECISION
+#include "libmath/linalg.h"
 
 #include <stdio.h>
 
 int main() {
-        printf("nigger");
         glab_create_window(800, 600);
 
         float mesh[24] = {
@@ -35,8 +36,13 @@ int main() {
                                  4, 6, 7, 4, 5, 7 };
 
         float* transform =
-                add_opaque_mesh(mesh, 8, indices, 36, (float[3]) { 1, 1, 1 });
-        draw();
-        return 0;
+                add_opaque_mesh(mesh, 24, indices, 36, (float[3]) { 1, 1, 1 });
+
+        matN_assign_identity(transform, 4);
+
+        while (!should_close()) {
+                draw();
+        }
         glab_quit();
+        return 0;
 }

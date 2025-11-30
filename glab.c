@@ -7,7 +7,6 @@
 
 #include <assert.h>
 #include <GLFW/glfw3.h>
-#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -28,6 +27,8 @@ struct {
         GLFWwindow* window;
         int         frame_width, frame_height;
 
+        GLint window_dimensions;
+
         GLuint opaque_prog;
         GLint  u_color;
         GLint  u_transform;
@@ -40,6 +41,8 @@ struct {
 void resize_callback(GLFWwindow* window, int w, int h) {
         ctx.frame_width  = w;
         ctx.frame_height = h;
+        glViewport(0, 0, w, h);
+        glUniform2f(ctx.window_dimensions, (float) w, (float) h);
 }
 
 void glab_create_window(int width, int height) {
@@ -49,36 +52,54 @@ void glab_create_window(int width, int height) {
         glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
         glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 
-        ctx.window = glfwCreateWindow(1, 1, "glab", NULL, NULL);
+        ctx.window = glfwCreateWindow(100, 100, "glab", NULL, NULL);
         if (ctx.window == NULL) {
                 glfwTerminate();
                 return;
         }
         glfwMakeContextCurrent(ctx.window);
-        glfwSetFramebufferSizeCallback(ctx.window, resize_callback);
         if (!gladLoadGLLoader((GLADloadproc) glfwGetProcAddress)) {
                 fprintf(stderr, "Failed to initialize GLAD");
         }
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
 
         GLuint vs_shader = compile_shader_from_path(VS_PATH, VERTEX);
-        GLuint fs_shader = compile_shader_from_path(VS_PATH, VERTEX);
+        GLuint fs_shader = compile_shader_from_path(FS_PATH, FRAGMENT);
 
         ctx.opaque_prog = glCreateProgram();
         glAttachShader(ctx.opaque_prog, vs_shader);
         glAttachShader(ctx.opaque_prog, fs_shader);
+        glLinkProgram(ctx.opaque_prog);
+
+        GLint linked = 0;
+        glGetProgramiv(ctx.opaque_prog, GL_LINK_STATUS, &linked);
+        if (!linked) {
+                GLint len = 0;
+                glGetProgramiv(ctx.opaque_prog, GL_INFO_LOG_LENGTH, &len);
+                char* log = malloc(len ? len : 1);
+                glGetProgramInfoLog(ctx.opaque_prog, len, NULL, log);
+                fprintf(stderr, "Program link error: %s\n", log);
+                free(log);
+                glDeleteProgram(ctx.opaque_prog);
+        }
 
         glDeleteShader(vs_shader);
         glDeleteShader(fs_shader);
 
-        ctx.u_color     = glGetUniformLocation(ctx.opaque_prog, "uColor");
-        ctx.u_transform = glGetUniformLocation(ctx.opaque_prog, "uTransform");
+        ctx.window_dimensions =
+                glGetUniformLocation(ctx.opaque_prog, "window_dimensions");
+
+        ctx.u_color     = glGetUniformLocation(ctx.opaque_prog, "color");
+        ctx.u_transform = glGetUniformLocation(ctx.opaque_prog, "transform");
+
+        printf("%i, %i, %i\n", ctx.window_dimensions, ctx.u_transform,
+               ctx.u_color);
+        memset(&opaque_mesh_data, 0, sizeof(opaque_mesh_data));
+        glEnable(GL_DEPTH_TEST);
+        glfwSetFramebufferSizeCallback(ctx.window, resize_callback);
 }
 
 void glab_quit() {
-        glfwDestroyWindow(ctx.window);
-        glfwTerminate();
-
         glDeleteVertexArrays(opaque_mesh_data.m_count, opaque_mesh_data.vao);
         glDeleteBuffers(opaque_mesh_data.m_count, opaque_mesh_data.vbo);
         glDeleteBuffers(opaque_mesh_data.m_count, opaque_mesh_data.ebo);
@@ -86,22 +107,25 @@ void glab_quit() {
         for (int i = 0; i < opaque_mesh_data.m_count; i++) {
                 free(opaque_mesh_data.transform[i]);
         }
+
+        glfwDestroyWindow(ctx.window);
+        glfwTerminate();
 }
 
 void draw() {
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glUseProgram(ctx.opaque_prog);
         for (int i = 0; i < opaque_mesh_data.m_count; i++) {
                 float* color = opaque_mesh_data.color[i];
                 glUniform3f(ctx.u_color, color[0], color[1], color[2]);
                 float* transform = opaque_mesh_data.transform[i];
-                glUniformMatrix4fv(ctx.u_transform, 16, 0, transform);
+                glUniformMatrix4fv(ctx.u_transform, 1, GL_FALSE, transform);
 
                 glBindVertexArray(opaque_mesh_data.vao[i]);
-                glDrawArrays(GL_TRIANGLES, 0,
-                             opaque_mesh_data.index_count[i] /
-                                     3);  // 3 indeices per triangle
+
+                glDrawElements(GL_TRIANGLES, opaque_mesh_data.index_count[i],
+                               GL_UNSIGNED_INT, NULL);
         }
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glfwSwapBuffers(ctx.window);
 }
 
@@ -110,7 +134,7 @@ float* add_opaque_mesh(float*    mesh,
                        uint32_t* indicies,
                        long      index_count,
                        float     color[3]) {
-        if (opaque_mesh_data.m_count == MAX_OPAQUE) {
+        if (opaque_mesh_data.m_count >= MAX_OPAQUE) {
                 printf("Mesh limit exceeded.");
                 return NULL;
         }
@@ -118,16 +142,19 @@ float* add_opaque_mesh(float*    mesh,
         GLuint* vao = &opaque_mesh_data.vao[opaque_mesh_data.m_count];
         GLuint* vbo = &opaque_mesh_data.vbo[opaque_mesh_data.m_count];
         GLuint* ebo = &opaque_mesh_data.ebo[opaque_mesh_data.m_count];
+        float** transform =
+                &opaque_mesh_data.transform[opaque_mesh_data.m_count];
 
         glGenVertexArrays(1, vao);
         glBindVertexArray(*vao);
+        glGenBuffers(1, vbo);
+        glBindBuffer(GL_ARRAY_BUFFER, *vbo);
+        glBufferData(GL_ARRAY_BUFFER, vertex_count * sizeof(float), mesh,
+                     GL_STATIC_DRAW);
+
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float),
                               (void*) 0);
         glEnableVertexAttribArray(0);
-        glGenBuffers(1, vbo);
-        glBindBuffer(GL_ARRAY_BUFFER, *vbo);
-        glBufferData(GL_ARRAY_BUFFER, vertex_count * 3 * sizeof(float), mesh,
-                     GL_STATIC_DRAW);
 
         glGenBuffers(1, ebo);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, *ebo);
@@ -137,13 +164,12 @@ float* add_opaque_mesh(float*    mesh,
         opaque_mesh_data.index_count[opaque_mesh_data.m_count] = index_count;
         memcpy(&opaque_mesh_data.color[opaque_mesh_data.m_count], color,
                3 * sizeof(float));
-        float* transform = malloc(16 * sizeof(float));
-        if (transform) {
-                opaque_mesh_data.transform[opaque_mesh_data.m_count] =
-                        transform;
-                return opaque_mesh_data.transform[opaque_mesh_data.m_count];
+        *transform = malloc(16 * sizeof(float));
+        if (*transform) {
                 opaque_mesh_data.m_count++;
+                return *transform;
         }
+        printf("failed to make mesh\n");
         exit(1);
         return NULL;
 }

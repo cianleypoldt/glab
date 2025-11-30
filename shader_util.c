@@ -32,6 +32,7 @@ uint32_t compile_shader_from_path(const char* path, shader_type type) {
         int success;
         glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
         if (success == GL_TRUE) {
+                printf("compilations succesful\n");
                 return shader;
         }
 
